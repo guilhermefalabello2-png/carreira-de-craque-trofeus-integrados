@@ -1,27 +1,20 @@
 
-name: Gerar APK Android
+name: Criar APK Android
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
   build:
+    name: Compilar APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Baixar projeto
         uses: actions/checkout@v4
-
-      - name: Configurar Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
 
       - name: Configurar Java
         uses: actions/setup-java@v4
@@ -29,24 +22,45 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Instalar dependências
-        run: npm install
+      - name: Configurar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-      - name: Criar projeto Android com Capacitor
-        run: npx cap add android
-
-      - name: Sincronizar jogo com Android
-        run: npx cap sync android
-
-      - name: Gerar APK de teste
-        working-directory: android
+      - name: Localizar e extrair jogo
         run: |
+          ZIP=$(find . -maxdepth 1 -iname "*.zip" | head -n 1)
+          if [ -z "$ZIP" ]; then
+            echo "ERRO: ZIP do jogo não encontrado na raiz."
+            exit 1
+          fi
+          mkdir projeto
+          unzip -q "$ZIP" -d projeto
+          INDEX=$(find projeto -type f -name index.html | head -n 1)
+          if [ -z "$INDEX" ]; then
+            echo "ERRO: index.html não encontrado."
+            exit 1
+          fi
+          mkdir www
+          cp -a "$(dirname "$INDEX")"/. www/
+
+      - name: Criar aplicativo Android
+        run: |
+          npm init -y
+          npm install @capacitor/core@6 @capacitor/android@6
+          npm install --save-dev @capacitor/cli@6
+          npx cap init "Carreira de Craque" "com.carreiradecraque.game" --web-dir=www
+          npx cap add android
+          npx cap sync android
+
+      - name: Compilar APK
+        run: |
+          cd android
           chmod +x gradlew
           ./gradlew assembleDebug
 
       - name: Disponibilizar APK
         uses: actions/upload-artifact@v4
         with:
-          name: Carreira-de-Craque-APK-debug
+          name: Carreira-de-Craque-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
